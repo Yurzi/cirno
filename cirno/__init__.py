@@ -71,7 +71,7 @@ class CirnoProcess(Process):
         返回进程的调用结果
         如果进程抛出了一个异常，那么其也会抛出其异常
         """
-        if self._is_closed():
+        if self._is_closed:
             return self._result
 
         # 进程还在执行时，返回None
