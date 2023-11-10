@@ -72,7 +72,10 @@ class CirnoProcess(Process):
         如果进程抛出了一个异常，那么其也会抛出其异常
         """
         if self._is_closed:
-            return self._result
+            if self._expection is None:
+                return self._result
+            else:
+                raise self._expection
 
         # 进程还在执行时，返回None
         if self.is_alive():
