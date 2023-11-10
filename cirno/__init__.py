@@ -3,6 +3,7 @@ from enum import Enum
 from multiprocessing import Process, Queue, cpu_count
 from threading import Lock, Thread
 from time import sleep
+from typing import Self
 
 import psutil as ps
 
@@ -64,6 +65,9 @@ class CirnoProcess(Process):
             child.terminate()
         parent = None
         super().terminate()
+
+    def reborn(self) -> Self:
+        return CirnoProcess(self.func, *self.args, **self.kwargs)
 
     @property
     def result(self) -> None | object:
@@ -274,7 +278,7 @@ class CirnoPool(Thread):
             self._now_process_lock.release()
             return
 
-        last_one = self._now_process_list[-1]
+        last_one: CirnoProcess = self._now_process_list[-1]
         # 结束进程
         last_one.terminate()
         # 移出真正运行列表
@@ -285,7 +289,7 @@ class CirnoPool(Thread):
 
         # 重新加入todolist
         self._todo_process_lock.acquire()
-        self._todo_process_list.append(last_one)
+        self._todo_process_list.append(last_one.reborn())
         self._todo_process_lock.release()
 
     def _move_to_run(self) -> None:
