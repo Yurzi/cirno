@@ -71,12 +71,12 @@ class CirnoProcess(Process):
         返回进程的调用结果
         如果进程抛出了一个异常，那么其也会抛出其异常
         """
+        if self._is_closed():
+            return self._result
+
         # 进程还在执行时，返回None
         if self.is_alive():
             return None
-
-        if self._is_closed():
-            return self._result
 
         # Cache
         # 检查是否有异常
@@ -102,13 +102,13 @@ class CirnoProcess(Process):
         """
         返回进程的所抛出的异常
         """
-        # 进程还在执行时，返回None
-        if self.is_alive():
-            return None
-
         # 进程已经被关闭
         if self._is_closed:
             return self._expection
+
+        # 进程还在执行时，返回None
+        if self.is_alive():
+            return None
 
         if self._expection is not None:
             return self._expection
@@ -156,7 +156,7 @@ class CirnoPool(Thread):
         is_smart: bool = True,
         min_threshold: (float, float) = ((cpu_count() * 80), 80),
         max_threshold: (float, float) = ((cpu_count() * 95), 95),
-        sleep_timeout: int = 10,
+        sleep_timeout: int = 9,
     ) -> None:
         """
         max_process: int, 设置进程池支持的最大进程数
