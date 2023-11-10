@@ -67,7 +67,7 @@ class CirnoProcess(Process):
         super().terminate()
 
     def reborn(self) -> Self:
-        return CirnoProcess(self.func, *self.args, **self.kwargs)
+        return CirnoProcess(self._func, *self._args, **self._kwargs)
 
     @property
     def result(self) -> None | object:
