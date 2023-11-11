@@ -413,7 +413,10 @@ class CirnoPool(Thread):
             return self.Status.Bad
 
         if self._is_smart is False:
-            return self.Status.Healthy
+            if self._now_process < self._max_process:
+                return self.Status.Healthy
+            else:
+                return self.Status.MaybeOK
 
         # 进行运行时的环境检查以查看是否能继续增加一个进程
         os_mem = ps.virtual_memory()
