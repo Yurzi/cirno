@@ -16,8 +16,8 @@ class CirnoProcess(Process):
     def __init__(self, func: callable, *args, **kwargs) -> None:
         super().__init__()
         self._func: callable = func
-        self._args = args
-        self._kwargs = kwargs
+        self._c_args = args
+        self._c_kwargs = kwargs
         self._result: None | object = None
         self._expection: None | BaseException = None
         # pipe between parent with child
@@ -28,6 +28,8 @@ class CirnoProcess(Process):
 
         self._is_closed: bool = False
 
+        self._attched_future: None | CirnoFuture = None
+
     def start(self) -> None:
         self._result_pipe = Queue()
         self._expection_pipe = Queue()
@@ -35,11 +37,20 @@ class CirnoProcess(Process):
 
     def run(self) -> None:
         try:
-            self._result_pipe.put(self._func(*self._args, **self._kwargs))
+            self._result_pipe.put(self._func(*self._c_args, **self._c_kwargs))
         except BaseException as e:
             self._expection_pipe.put(e)
 
-    def close(self) -> None:
+    def close(self, force: bool = True) -> None:
+        if self._is_closed is True:
+            return
+
+        if self.is_alive():
+            if force:
+                self.terminate()
+            else:
+                self.join()
+
         self._is_closed = True
 
         if self._result_pipe.empty() is False:
@@ -66,8 +77,30 @@ class CirnoProcess(Process):
         parent = None
         super().terminate()
 
-    def reborn(self) -> Self:
-        return CirnoProcess(self._func, *self._args, **self._kwargs)
+    def _set_future(self, future: "CirnoFuture") -> None:
+        self._attched_future = future
+        self._attched_future._set_process(self)
+
+    def reborn(self) -> None | Self:
+        """
+        重生进程，只能在进程关闭后调用，否则返回None
+        """
+        if self._is_closed is False:
+            return None
+        # 新建
+        new = CirnoProcess(self._func, *self._c_args, **self._c_kwargs)
+        if self._attched_future is not None:
+            new._set_future(self._attched_future)
+
+        return new
+
+    def get_future(self) -> "CirnoFuture":
+        if self._attched_future is not None:
+            self._attched_future._set_process(self)
+            return self._attched_future
+        # 新建一个Future 并返回
+        self._attched_future = CirnoFuture(self)
+        return self._attched_future
 
     @property
     def result(self) -> None | object:
@@ -143,6 +176,39 @@ class CirnoProcess(Process):
         return (cpu_usage, memory_usage)
 
 
+class CirnoFuture:
+    """
+    包装类，包装了进程的结果
+    """
+
+    def __init__(self, process: CirnoProcess) -> None:
+        self._process = process
+
+    @property
+    def result(self) -> None | object:
+        if self._process is None:
+            return None
+        return self._process.result
+
+    @property
+    def expection(self) -> None | BaseException:
+        if self._process is None:
+            return None
+        return self._process.expection
+
+    @property
+    def is_running(self) -> bool:
+        if self._process is None:
+            return False
+        if self._process._is_closed:
+            return False
+        else:
+            return self._process.is_alive()
+
+    def _set_process(self, process: CirnoProcess) -> None:
+        self._process = process
+
+
 class CirnoPool(Thread):
     """
     进程池，使用Thread实现
@@ -193,7 +259,7 @@ class CirnoPool(Thread):
         # 进程池，启动！
         self.start()
 
-    def submit(self, func: callable, *args, **kwargs) -> CirnoProcess:
+    def submit(self, func: callable, *args, **kwargs) -> CirnoFuture:
         if self._shutdown:
             raise Exception("CirnoPool has closed")
 
@@ -203,7 +269,7 @@ class CirnoPool(Thread):
         self._todo_process_list.append(p)
         self._todo_process_lock.release()
 
-        return p
+        return p.get_future()
 
     def shutdown(self) -> None:
         self._shutdown = True
@@ -280,12 +346,15 @@ class CirnoPool(Thread):
 
         last_one: CirnoProcess = self._now_process_list[-1]
         # 结束进程
-        last_one.terminate()
         # 移出真正运行列表
         self._now_process_list.remove(last_one)
         # 修改计数器
         self._now_process -= 1
         self._now_process_lock.release()
+        # 结束进程
+        last_one.terminate()
+        last_one.join()
+        last_one.close()
 
         # 重新加入todolist
         self._todo_process_lock.acquire()
@@ -330,6 +399,7 @@ class CirnoPool(Thread):
         # 将这些进程关闭，并移入完成列表
         self._done_process_lock.acquire()
         for p in process_list:
+            p.join()
             p.close()
             self._done_process_list.append(p)
         self._done_process_lock.release()
