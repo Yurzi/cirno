@@ -357,8 +357,9 @@ class CirnoPool(Thread):
         last_one.close()
 
         # 重新加入todolist
+        new_one = last_one.reborn()
         self._todo_process_lock.acquire()
-        self._todo_process_list.append(last_one.reborn())
+        self._todo_process_list.append(new_one)
         self._todo_process_lock.release()
 
     def _move_to_run(self) -> None:
