@@ -409,7 +409,7 @@ class CirnoPool(Thread):
         """
         因为琪露诺很笨，所以这个检查非常的耗时，所以不建议经常进行
         """
-        if self._now_process >= self._max_process:
+        if self._now_process > self._max_process:
             return self.Status.Bad
 
         if self._is_smart is False:
@@ -420,10 +420,13 @@ class CirnoPool(Thread):
         total_cpu = ps.cpu_percent(interval=0.2)
         total_mem = (os_mem.used / os_mem.total) * 100
 
-        if total_cpu < self._min_threshold[0] and total_mem < self._min_threshold[1]:
-            return self.Status.Healthy
-
         if total_cpu >= self._max_threshold[0] or total_mem >= self._max_threshold[1]:
             return self.Status.Bad
+
+        if self._now_process == self._max_process:
+            return self.Status.MaybeOK
+
+        if total_cpu < self._min_threshold[0] and total_mem < self._min_threshold[1]:
+            return self.Status.Healthy
 
         return self.Status.MaybeOK
