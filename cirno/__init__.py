@@ -227,8 +227,8 @@ class CirnoPool(Thread):
         self,
         max_process: int = cpu_count(),
         is_smart: bool = True,
-        min_threshold: (float, float) = ((cpu_count() * 80), 80),
-        max_threshold: (float, float) = ((cpu_count() * 95), 95),
+        min_threshold: (float, float) = (80, 80),
+        max_threshold: (float, float) = (95, 95),
         sleep_timeout: int = 9,
     ) -> None:
         """
@@ -418,7 +418,7 @@ class CirnoPool(Thread):
         # 进行运行时的环境检查以查看是否能继续增加一个进程
         os_mem = ps.virtual_memory()
         total_cpu = ps.cpu_percent(interval=0.2)
-        total_mem = os_mem.used / os_mem.total
+        total_mem = (os_mem.used / os_mem.total) * 100
 
         if total_cpu < self._min_threshold[0] and total_mem < self._min_threshold[1]:
             return self.Status.Healthy
