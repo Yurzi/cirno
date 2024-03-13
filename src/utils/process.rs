@@ -169,7 +169,7 @@ pub fn kill_process_tree(pid: Pid, signal: Signal) -> Result<bool> {
     process_list_to_kill.reverse();
     for process in process_list_to_kill {
         if process.is_exist() {
-            kill_process(process.pid, signal);
+            let _ = kill_process(process.pid, signal);
         }
     }
 
