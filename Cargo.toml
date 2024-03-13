@@ -1,6 +1,14 @@
 [package]
 name = "cirno"
 version = "0.1.0"
+description = 'a "smartest" task scheduler'
 edition = "2021"
 
 [dependencies]
+clap = { version = "4.5.2", features = ["derive"] }
+rustix = { version = "0.38.31", features = ["process"] }
+sysinfo = "0.30.7"
+
+[profile.release]
+# use lto to optimize the binary
+lto = true
