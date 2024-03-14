@@ -1,21 +1,21 @@
+use std::char;
 use std::fmt::Display;
 use std::fs::{read_dir, read_to_string};
 use std::io::{ErrorKind, Result};
 use std::num::NonZeroI32;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use rustix::param::page_size;
 use rustix::process::{kill_process, Pid, Signal};
 
 const PROC_DIR: &str = "/proc";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Process {
     pid: Pid,
     ppid: Option<Pid>,
     comm: String,
-    create_time: SystemTime,
+    create_time: usize,
 }
 
 impl Process {
@@ -23,37 +23,43 @@ impl Process {
         let proc_path = format!("{}/{}/stat", PROC_DIR, pid.as_raw_nonzero());
         let proc_path = Path::new(&proc_path);
 
-        // get process create time
-        let proc_file_attr = proc_path.metadata()?;
-        let proc_create_time = proc_file_attr.created()?;
-
         // read process info at one time to decrease unsync status
         let proc_stat = read_to_string(proc_path)?;
+        let comm = proc_stat
+            .chars()
+            .skip_while(|&x| x != '(')
+            .skip(1)
+            .take_while(|&x| x != ')')
+            .collect::<String>();
 
         // parse proc_stat
-        let mut proc_stat = proc_stat.split_whitespace();
-        let _pid = proc_stat
-            .next()
-            .ok_or(ErrorKind::NotFound)?
-            .parse::<i32>()
-            .expect("Bad format in proc/stat");
-        let comm = proc_stat
-            .next()
-            .ok_or(ErrorKind::NotFound)?
-            .trim_matches(|c| c == '(' || c == ')');
-        let _state = proc_stat.next().ok_or(ErrorKind::NotFound)?;
+        let proc_stat = proc_stat
+            .chars()
+            .skip_while(|&x| x != ')')
+            .skip_while(|&x| !char::is_alphanumeric(x))
+            .collect::<String>();
+        let proc_stat: Vec<&str> = proc_stat.split_ascii_whitespace().collect();
         let ppid = proc_stat
-            .next()
+            .get(1)
             .ok_or(ErrorKind::NotFound)?
             .parse::<i32>()
-            .expect("Bad format in proc/stat");
+            .expect("Bad format in proc/pid/stat");
         // Safety: the ppid is came from proc/stat file,
         // so it must be positive
-        let ppid = unsafe { Pid::from_raw_unchecked(ppid) };
+        let ppid = if ppid == 0 {
+            None
+        } else {
+            Some(unsafe { Pid::from_raw_unchecked(ppid) })
+        };
+        let proc_create_time = proc_stat
+            .get(19)
+            .ok_or(ErrorKind::NotFound)?
+            .parse::<usize>()
+            .expect("Bad format in proc/pid/stat");
 
         Ok(Process {
             pid,
-            ppid: Some(ppid),
+            ppid,
             comm: comm.to_string(),
             create_time: proc_create_time,
         })
@@ -81,14 +87,20 @@ impl Process {
         let pid: i32 = self.pid.as_raw_nonzero().get();
         let proc_path = format!("{}/{}/stat", PROC_DIR, pid);
         let proc_path = Path::new(&proc_path);
-
-        let proc_file_attr = match proc_path.metadata() {
-            Ok(metadata) => metadata,
-            Err(_) => return false,
-        };
+        let proc_stat = read_to_string(proc_path).unwrap();
+        let proc_stat = proc_stat
+            .chars()
+            .skip_while(|&x| x != ')')
+            .skip_while(|&x| !char::is_alphanumeric(x))
+            .collect::<String>();
+        let proc_stat: Vec<&str> = proc_stat.split_ascii_whitespace().collect();
+        let proc_create_time = proc_stat
+            .get(19)
+            .unwrap()
+            .parse::<usize>()
+            .expect("Bad format in proc/pid/stat");
 
         // os fatal, panic is better
-        let proc_create_time = proc_file_attr.created().unwrap();
         self.create_time == proc_create_time
     }
 }
@@ -108,9 +120,6 @@ impl Display for Process {
             ppid,
             self.comm,
             self.create_time
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards")
-                .as_millis()
         )
     }
 }

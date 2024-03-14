@@ -8,6 +8,7 @@ edition = "2021"
 clap = { version = "4.5.2", features = ["derive"] }
 rustix = { version = "0.38.31", features = ["process", "param"] }
 sysinfo = "0.30.7"
+uuid = { version = "1.7.0", features = ["v1", "std", "fast-rng"] }
 
 [profile.release]
 # use lto to optimize the binary

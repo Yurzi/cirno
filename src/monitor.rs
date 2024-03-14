@@ -4,6 +4,12 @@ use rustix::process::getpid;
 
 use sysinfo::System;
 
+pub enum SysStatus {
+    Health,
+    Normal,
+    Bad,
+}
+
 pub struct Monitor {
     system: System,
 
@@ -17,7 +23,7 @@ pub struct Monitor {
 }
 
 impl Monitor {
-    pub fn new(args: Args) -> Self {
+    pub fn new(args: &Args) -> Self {
         let system = System::new_all();
         let total_res_mem = system.total_memory() as usize;
         let per_task_mem = args.per_task_mem;
@@ -47,14 +53,14 @@ impl Monitor {
         }
     }
 
-    pub fn is_ok(&mut self, running_task_amount: usize) -> bool {
+    pub fn is_ok(&mut self, running_task_amount: usize) -> SysStatus {
         // update monitor
         self.system.refresh_memory();
 
         // check system load average
         let load_avg = System::load_average().five / self.system.cpus().len() as f64;
-        if load_avg > self.load_avg_thres {
-            return false;
+        if load_avg > self.load_avg_thres * 2.0 {
+            return SysStatus::Bad;
         }
 
         // try to statistc per task mem usage
@@ -78,6 +84,13 @@ impl Monitor {
 
         let os_total_mem_used = self.system.used_memory() as usize;
         // if mem has free
-        os_total_mem_used + per_task_mem <= self.high_mem_thres
+        let predicate_mem_used = os_total_mem_used + per_task_mem;
+        if predicate_mem_used <= self.low_mem_thres {
+            SysStatus::Health
+        } else if predicate_mem_used > self.high_mem_thres {
+            SysStatus::Bad
+        } else {
+            SysStatus::Normal
+        }
     }
 }

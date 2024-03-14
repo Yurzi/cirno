@@ -1,12 +1,18 @@
 use std::{
     fmt::Display,
+    fs::{self},
     io::Result,
-    process::{Child, Command, ExitStatus},
+    path::Path,
+    process::{Child, Command, ExitStatus, Stdio},
+    str::FromStr,
     time::{Duration, Instant},
 };
 
 use crate::utils::process::kill_process_tree;
 use rustix::process::{Pid, Signal};
+use uuid::Uuid;
+
+const NODE_ID: [u8; 6] = [1, 1, 4, 5, 1, 4];
 
 #[derive(Debug, Copy, Clone)]
 pub enum TaskStatus {
@@ -17,8 +23,22 @@ pub enum TaskStatus {
     Killed,
 }
 
+impl Display for TaskStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let display_str = match self {
+            Self::Waiting => "Waiting",
+            Self::Running => "Running",
+            Self::Exited => "Exited",
+            Self::Timeout => "Timeout",
+            Self::Killed => "Killed",
+        };
+        write!(f, "{}", display_str)
+    }
+}
+
 #[derive(Debug)]
 pub struct Task {
+    name: String,
     prog: String,
     args: Vec<String>,
     cmd: Command,
@@ -26,6 +46,7 @@ pub struct Task {
     status: TaskStatus,
     handler: Option<Child>,
     start_time: Option<Instant>,
+    start_waiting_time: Option<Instant>,
 }
 
 impl Task {
@@ -42,12 +63,14 @@ impl Task {
         cmd.args(args.clone());
 
         Task {
+            name: String::from(Uuid::now_v1(&NODE_ID)),
             prog,
             args,
             cmd,
             status: TaskStatus::Waiting,
             handler: None,
             start_time: None,
+            start_waiting_time: None,
         }
     }
 
@@ -55,11 +78,55 @@ impl Task {
         self.status = status;
     }
 
+    pub fn get_status(&self) -> TaskStatus {
+        self.status
+    }
+
+    pub fn set_name(&mut self, name: &str) {
+        self.name = name.to_string();
+    }
+
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn get_cmd(&self) -> String {
+        let cmd = &self.prog;
+        let args = self.args.join(" ");
+
+        format!("{} {}", cmd, args)
+    }
+
     pub fn running_time(&self) -> Duration {
         match &self.start_time {
             Some(start_time) => start_time.elapsed(),
             None => Duration::from_secs(0),
         }
+    }
+
+    pub fn waiting_time(&self) -> Duration {
+        match &self.start_waiting_time {
+            Some(start_time) => start_time.elapsed(),
+            None => Duration::from_secs(0),
+        }
+    }
+
+    pub fn reset_waiting_time(&mut self) {
+        self.start_waiting_time = Some(Instant::now());
+    }
+
+    fn stdout(&mut self, pipe: Stdio) -> &mut Self {
+        self.cmd.stdout(pipe);
+        self
+    }
+
+    pub fn stdout_from_file(&mut self, path: &Path) -> &mut Self {
+        if let Some(p) = path.parent() {
+            fs::create_dir_all(p).expect("Failed to create runtime dir");
+        }
+        let file = fs::File::create(path).expect("Failed to create file");
+        self.stdout(Stdio::from(file));
+        self
     }
 
     pub fn spawn(&mut self) {
@@ -107,7 +174,7 @@ impl Task {
         }
     }
 
-    pub fn signal(&self, signal:Signal) -> Result<bool> {
+    pub fn signal(&self, signal: Signal) -> Result<bool> {
         if let Some(child) = &self.handler {
             kill_process_tree(Pid::from_child(child), signal)
         } else {
@@ -130,4 +197,19 @@ impl Drop for Task {
             let _ = self.stop();
         }
     }
+}
+
+pub fn gen_tasks_from_file(filename: &Path) -> Vec<Task> {
+    let contents = fs::read_to_string(filename).expect("Failed to read task list");
+    let contents = contents.trim();
+    if contents.len() == 0 {
+        return Vec::new();
+    }
+    let mut task_list = Vec::new();
+    for line in contents.split("\n") {
+        let task = Task::new(line);
+        task_list.push(task);
+    }
+
+    return task_list;
 }
