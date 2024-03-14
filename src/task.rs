@@ -72,7 +72,7 @@ impl Task {
                     None => {
                         // use kill signl to stop process forcely.
                         match kill_process_tree(Pid::from_child(&child), Signal::Kill) {
-                            Ok(_) => return Ok(Some(child.wait()?)),
+                            Ok(_) => Ok(Some(child.wait()?)),
                             Err(_) => unreachable!(),
                         }
                     }
@@ -81,11 +81,28 @@ impl Task {
             None => Ok(None),
         }
     }
+
+    pub fn signal(&self, signal:Signal) -> Result<bool> {
+        if let Some(child) = &self.handler {
+            kill_process_tree(Pid::from_child(child), signal)
+        } else {
+            Ok(false)
+        }
+    }
 }
 
 impl Display for Task {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let args_str = self.args.join(" ");
         write!(f, "Task: {} {:?}", self.prog, args_str)
+    }
+}
+
+impl Drop for Task {
+    fn drop(&mut self) {
+        if self.handler.is_some() {
+            // we should kill process tree at this time
+            let _ = self.stop();
+        }
     }
 }
