@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.5.2", features = ["derive"] }
-rustix = { version = "0.38.31", features = ["process"] }
+rustix = { version = "0.38.31", features = ["process", "param"] }
 sysinfo = "0.30.7"
 
 [profile.release]

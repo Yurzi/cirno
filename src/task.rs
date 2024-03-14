@@ -2,16 +2,19 @@ use std::{
     fmt::Display,
     io::Result,
     process::{Child, Command, ExitStatus},
+    time::{Duration, Instant},
 };
 
 use crate::utils::process::kill_process_tree;
 use rustix::process::{Pid, Signal};
 
-#[derive(Default, Debug)]
-pub struct TaskTimer {
-    waiting: i64,
-    running: i64,
-    stopping: i64,
+#[derive(Debug, Copy, Clone)]
+pub enum TaskStatus {
+    Waiting,
+    Running,
+    Exited,
+    Timeout,
+    Killed,
 }
 
 #[derive(Debug)]
@@ -20,8 +23,9 @@ pub struct Task {
     args: Vec<String>,
     cmd: Command,
 
-    timer: TaskTimer,
+    status: TaskStatus,
     handler: Option<Child>,
+    start_time: Option<Instant>,
 }
 
 impl Task {
@@ -41,8 +45,20 @@ impl Task {
             prog,
             args,
             cmd,
-            timer: TaskTimer::default(),
+            status: TaskStatus::Waiting,
             handler: None,
+            start_time: None,
+        }
+    }
+
+    pub fn set_status(&mut self, status: TaskStatus) {
+        self.status = status;
+    }
+
+    pub fn running_time(&self) -> Duration {
+        match &self.start_time {
+            Some(start_time) => start_time.elapsed(),
+            None => Duration::from_secs(0),
         }
     }
 
@@ -59,7 +75,16 @@ impl Task {
                 None
             }
         };
+        self.start_time = Some(Instant::now());
         self.handler = p;
+    }
+
+    pub fn try_wait(&mut self) -> Result<Option<ExitStatus>> {
+        if let Some(chlid) = &mut self.handler {
+            chlid.try_wait()
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn stop(&mut self) -> Result<Option<ExitStatus>> {

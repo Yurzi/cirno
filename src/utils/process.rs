@@ -5,10 +5,12 @@ use std::num::NonZeroI32;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use rustix::param::page_size;
 use rustix::process::{kill_process, Pid, Signal};
 
 const PROC_DIR: &str = "/proc";
 
+#[derive(Clone)]
 pub struct Process {
     pid: Pid,
     ppid: Option<Pid>,
@@ -29,7 +31,7 @@ impl Process {
         let proc_stat = read_to_string(proc_path)?;
 
         // parse proc_stat
-        let mut proc_stat = proc_stat.trim().split_whitespace();
+        let mut proc_stat = proc_stat.split_whitespace();
         let _pid = proc_stat
             .next()
             .ok_or(ErrorKind::NotFound)?
@@ -55,6 +57,24 @@ impl Process {
             comm: comm.to_string(),
             create_time: proc_create_time,
         })
+    }
+
+    pub fn mem(&self) -> usize {
+        if !self.is_exist() {
+            return 0;
+        }
+        let pid: i32 = self.pid.as_raw_nonzero().get();
+        let proc_mem_path = format!("{}/{}/statm", PROC_DIR, pid);
+        let proc_mem_path = Path::new(&proc_mem_path);
+
+        let proc_statm = read_to_string(proc_mem_path).unwrap();
+        let mut proc_statm = proc_statm.split_whitespace();
+        let _size = proc_statm.next().unwrap().parse::<usize>().unwrap();
+        // use `page` as unit
+        let res_size = proc_statm.next().unwrap().parse::<usize>().unwrap();
+
+        // use `Byte` as unit
+        res_size * page_size()
     }
 
     pub fn is_exist(&self) -> bool {
@@ -109,10 +129,10 @@ pub fn get_sys_process_list() -> Vec<Process> {
 
     let proc_dir = Path::new(PROC_DIR);
     // on *nix os, the /proc/ is must exist;
-    let mut proc_dir = read_dir(proc_dir).unwrap();
+    let proc_dir = read_dir(proc_dir).unwrap();
 
     // iter all pid dir
-    while let Some(entry) = proc_dir.next() {
+    for entry in proc_dir {
         let entry = match entry {
             Ok(entry) => entry,
             Err(_) => continue,
@@ -143,29 +163,34 @@ pub fn get_sys_process_list() -> Vec<Process> {
     process_list
 }
 
-pub fn kill_process_tree(pid: Pid, signal: Signal) -> Result<bool> {
-    let mut process_list_to_kill: Vec<&Process> = Vec::new();
-    let mut children: Vec<&Process> = Vec::new();
+pub fn get_process_tree(pid: Pid) -> Result<Vec<Process>> {
+    let mut childern_process_list: Vec<Process> = Vec::new();
+    let mut children: Vec<Process> = Vec::new();
     let process_list = get_sys_process_list();
 
     // push first child process to stack, the first one will be duplicated,
     // but is safe
     let first_one = Process::new(pid)?;
-    children.push(&first_one);
+    children.push(first_one);
     while let Some(child) = children.pop() {
-        process_list_to_kill.push(child);
         // iter process_list to find children
         for process in process_list.iter() {
             if let Some(ppid) = process.ppid {
                 if ppid == child.pid {
                     // this one is a child
-                    children.push(process);
+                    children.push(process.clone());
                 }
             }
         }
+        childern_process_list.push(child);
     }
 
+    Ok(childern_process_list)
+}
+
+pub fn kill_process_tree(pid: Pid, signal: Signal) -> Result<bool> {
     // try to kill every children and self
+    let mut process_list_to_kill = get_process_tree(pid)?;
     process_list_to_kill.reverse();
     for process in process_list_to_kill {
         if process.is_exist() {
