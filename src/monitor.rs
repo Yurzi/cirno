@@ -64,7 +64,7 @@ impl Monitor {
         }
 
         // try to statistc per task mem usage
-        let process_list = get_process_tree(getpid()).unwrap();
+        let process_list = get_process_tree(getpid(), false).unwrap();
         let mut total_mem = 0;
         for process in process_list {
             total_mem += process.mem();

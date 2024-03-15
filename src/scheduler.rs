@@ -13,6 +13,7 @@ pub struct Scheduler {
     waiting_queue: VecDeque<Task>,
     running_pool: Vec<Task>,
     timeout_pool: Vec<Task>,
+    force_stop_pool: Vec<Task>,
     exited_pool: Vec<Task>,
 
     // propreties of scheduler
@@ -39,6 +40,7 @@ impl Scheduler {
             waiting_queue: VecDeque::new(),
             running_pool: Vec::new(),
             timeout_pool: Vec::new(),
+            force_stop_pool: Vec::new(),
             exited_pool: Vec::new(),
 
             tick_rate: args.tick_rate,
@@ -80,11 +82,12 @@ impl Scheduler {
             let tasks =
                 self.waiting_queue.len() + self.running_pool.len() + self.timeout_pool.len();
 
-            println!(
-                "Working..., {} task(s) remained, runing: {}",
+            print!(
+                "\rWorking..., {} task(s) remained, runing: {}",
                 tasks,
                 self.running_pool.len()
             );
+            let _ = std::io::stdout().flush();
 
             if tasks == 0 {
                 // all task is done.
@@ -167,19 +170,53 @@ impl Scheduler {
             // Finally, check the timeout pool to waiting process exit itself or kill it.
             let mut remain_timeout_tasks = Vec::new();
             for mut task in self.timeout_pool.drain(..) {
-                let elapsed = task.waiting_time().as_secs_f64();
-                if elapsed >= self.timeout_wait {
-                    // kill process
-                    let _ = task.stop();
-                    self.exited_pool.push(task);
-                } else {
-                    // signal alarm to process
-                    let _ = task.signal(rustix::process::Signal::Alarm);
-                    remain_timeout_tasks.push(task);
+                match task.try_wait() {
+                    Ok(Some(_)) => {
+                        // task stop itself
+                        self.exited_pool.push(task);
+                    }
+                    Ok(None) => {
+                        let elapsed = task.waiting_time().as_secs_f64();
+                        if elapsed >= self.timeout_wait {
+                            // send kill to task all childern to help exit
+                            let _ = task.signal(rustix::process::Signal::Kill, false);
+                            // move to force stop pool
+                            self.force_stop_pool.push(task);
+                        } else {
+                            // signal alarm to process
+                            let _ = task.signal(rustix::process::Signal::Alarm, true);
+                            remain_timeout_tasks.push(task);
+                        }
+                    }
+                    Err(_) => {
+                        // something going wrong, drop this task
+                        continue;
+                    }
                 }
             }
 
             self.timeout_pool = remain_timeout_tasks;
+
+            // cleanup force stop pool
+            for mut task in self.force_stop_pool.drain(..) {
+                match task.try_wait() {
+                    Ok(Some(_)) => {
+                        // task finally stop itself
+                        self.exited_pool.push(task);
+                    }
+                    Ok(None) => {
+                        // we should stop the task forcely
+                        let _ = task.stop();
+                        self.exited_pool.push(task);
+                    }
+                    Err(_) => {
+                        // something going wrong, drop this task
+                        continue;
+                    }
+                }
+            }
+            // reinit this pool
+            self.force_stop_pool = Vec::new();
 
             let tick_runing_time = tick_start.elapsed().as_millis();
             let tick_sleep_time = (self.tick_time - tick_runing_time) as u64;

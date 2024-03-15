@@ -1,4 +1,5 @@
 use std::char;
+use std::collections::VecDeque;
 use std::fmt::Display;
 use std::fs::{read_dir, read_to_string};
 use std::io::{ErrorKind, Result};
@@ -172,13 +173,12 @@ pub fn get_sys_process_list() -> Vec<Process> {
     process_list
 }
 
-pub fn get_process_tree(pid: Pid) -> Result<Vec<Process>> {
-    let mut childern_process_list: Vec<Process> = Vec::new();
+pub fn get_process_tree(pid: Pid, with_root: bool) -> Result<Vec<Process>> {
+    let mut childern_process_list: VecDeque<Process> = VecDeque::new();
     let mut children: Vec<Process> = Vec::new();
     let process_list = get_sys_process_list();
 
-    // push first child process to stack, the first one will be duplicated,
-    // but is safe
+    // push first process(self) to stack
     let first_one = Process::new(pid)?;
     children.push(first_one);
     while let Some(child) = children.pop() {
@@ -191,15 +191,20 @@ pub fn get_process_tree(pid: Pid) -> Result<Vec<Process>> {
                 }
             }
         }
-        childern_process_list.push(child);
+        childern_process_list.push_back(child);
     }
 
-    Ok(childern_process_list)
+    if !with_root {
+        // exclude the first one
+        let _ = childern_process_list.pop_front();
+    }
+
+    Ok(childern_process_list.into())
 }
 
-pub fn kill_process_tree(pid: Pid, signal: Signal) -> Result<bool> {
+pub fn kill_process_tree(pid: Pid, signal: Signal, with_root: bool) -> Result<bool> {
     // try to kill every children and self
-    let mut process_list_to_kill = get_process_tree(pid)?;
+    let mut process_list_to_kill = get_process_tree(pid, with_root)?;
     process_list_to_kill.reverse();
     for process in process_list_to_kill {
         if process.is_exist() {

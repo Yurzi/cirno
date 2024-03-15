@@ -4,7 +4,6 @@ use std::{
     io::Result,
     path::Path,
     process::{Child, Command, ExitStatus, Stdio},
-    str::FromStr,
     time::{Duration, Instant},
 };
 
@@ -163,7 +162,7 @@ impl Task {
                     Some(status) => Ok(Some(status)),
                     None => {
                         // use kill signl to stop process forcely.
-                        match kill_process_tree(Pid::from_child(&child), Signal::Kill) {
+                        match kill_process_tree(Pid::from_child(&child), Signal::Kill, true) {
                             Ok(_) => Ok(Some(child.wait()?)),
                             Err(_) => unreachable!(),
                         }
@@ -174,9 +173,9 @@ impl Task {
         }
     }
 
-    pub fn signal(&self, signal: Signal) -> Result<bool> {
+    pub fn signal(&self, signal: Signal, with_self: bool) -> Result<bool> {
         if let Some(child) = &self.handler {
-            kill_process_tree(Pid::from_child(child), signal)
+            kill_process_tree(Pid::from_child(child), signal, with_self)
         } else {
             Ok(false)
         }
@@ -202,14 +201,14 @@ impl Drop for Task {
 pub fn gen_tasks_from_file(filename: &Path) -> Vec<Task> {
     let contents = fs::read_to_string(filename).expect("Failed to read task list");
     let contents = contents.trim();
-    if contents.len() == 0 {
+    if contents.is_empty() {
         return Vec::new();
     }
     let mut task_list = Vec::new();
-    for line in contents.split("\n") {
+    for line in contents.split('\n') {
         let task = Task::new(line);
         task_list.push(task);
     }
 
-    return task_list;
+    task_list
 }
