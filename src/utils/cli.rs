@@ -14,7 +14,7 @@ pub struct Args {
     #[arg(
         long,
         default_value_t = 15.0,
-        help = "wait for timeout process to quit, milisecond"
+        help = "wait for timeout process to quit, seconds"
     )]
     pub timeout_wait: f64,
     #[arg(long, default_value_t = 1.0)]
