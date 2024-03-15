@@ -1,6 +1,6 @@
 [package]
 name = "cirno"
-version = "0.1.0"
+version = "1.0.1"
 description = 'a "smartest" task scheduler'
 edition = "2021"
 

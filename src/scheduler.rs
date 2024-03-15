@@ -121,29 +121,45 @@ impl Scheduler {
             self.running_pool = remain_running_tasks;
             // Secondly, Check System Status
             let running_tasks = self.running_pool.len() + self.timeout_pool.len();
-            match self.monitor.is_ok(running_tasks) {
-                SysStatus::Health => {
-                    // if system load is health, try to add a task to run,
-                    if !self.waiting_queue.is_empty() {
-                        let mut task = self.waiting_queue.pop_front().unwrap();
-                        task.stdout_from_file(Path::new(&format!(
-                            "{}/{}.log",
-                            self.run_dir,
-                            task.get_name()
-                        )));
-                        task.spawn();
-                        self.running_pool.push(task);
+            let workers = self.running_pool.len() + self.timeout_pool.len();
+            if workers < self.force_workers {
+                // if the force worker is larger than workers
+                // run tasks directly
+                if !self.waiting_queue.is_empty() {
+                    let mut task = self.waiting_queue.pop_front().unwrap();
+                    task.stdout_from_file(Path::new(&format!(
+                        "{}/{}.log",
+                        self.run_dir,
+                        task.get_name()
+                    )));
+                    task.spawn();
+                    self.running_pool.push(task);
+                }
+            } else {
+                match self.monitor.is_ok(running_tasks) {
+                    SysStatus::Health => {
+                        // if system load is health, try to add a task to run,
+                        if !self.waiting_queue.is_empty() {
+                            let mut task = self.waiting_queue.pop_front().unwrap();
+                            task.stdout_from_file(Path::new(&format!(
+                                "{}/{}.log",
+                                self.run_dir,
+                                task.get_name()
+                            )));
+                            task.spawn();
+                            self.running_pool.push(task);
+                        }
                     }
-                }
-                SysStatus::Normal => {
-                    // do nothing,
-                }
-                SysStatus::Bad => {
-                    // try to stop a task
-                    if self.running_pool.len() > self.force_workers {
-                        let mut task = self.running_pool.pop().unwrap();
-                        task.stop().expect("Failed to kill task");
-                        self.waiting_queue.push_back(task);
+                    SysStatus::Normal => {
+                        // do nothing,
+                    }
+                    SysStatus::Bad => {
+                        // try to stop a task
+                        if self.running_pool.len() > self.force_workers {
+                            let mut task = self.running_pool.pop().unwrap();
+                            task.stop().expect("Failed to kill task");
+                            self.waiting_queue.push_back(task);
+                        }
                     }
                 }
             }
