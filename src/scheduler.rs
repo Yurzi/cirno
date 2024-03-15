@@ -142,7 +142,7 @@ impl Scheduler {
                 match self.monitor.is_ok(running_tasks) {
                     SysStatus::Health => {
                         // if system load is health, try to add a task to run,
-                        if !self.waiting_queue.is_empty() {
+                        if !self.waiting_queue.is_empty() && workers < self.max_workers {
                             let mut task = self.waiting_queue.pop_front().unwrap();
                             task.stdout_from_file(Path::new(&format!(
                                 "{}/{}.log",
@@ -158,7 +158,7 @@ impl Scheduler {
                     }
                     SysStatus::Bad => {
                         // try to stop a task
-                        if self.running_pool.len() > self.force_workers {
+                        if workers > self.force_workers {
                             let mut task = self.running_pool.pop().unwrap();
                             task.stop().expect("Failed to kill task");
                             self.waiting_queue.push_back(task);

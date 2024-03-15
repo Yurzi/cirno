@@ -74,7 +74,10 @@ impl Process {
         let proc_mem_path = format!("{}/{}/statm", PROC_DIR, pid);
         let proc_mem_path = Path::new(&proc_mem_path);
 
-        let proc_statm = read_to_string(proc_mem_path).unwrap();
+        let proc_statm = match read_to_string(proc_mem_path) {
+            Ok(proc_statm) => proc_statm,
+            Err(_) => return 0,
+        };
         let mut proc_statm = proc_statm.split_whitespace();
         let _size = proc_statm.next().unwrap().parse::<usize>().unwrap();
         // use `page` as unit
@@ -88,7 +91,10 @@ impl Process {
         let pid: i32 = self.pid.as_raw_nonzero().get();
         let proc_path = format!("{}/{}/stat", PROC_DIR, pid);
         let proc_path = Path::new(&proc_path);
-        let proc_stat = read_to_string(proc_path).unwrap();
+        let proc_stat = match read_to_string(proc_path) {
+            Ok(proc_stat) => proc_stat,
+            Err(_) => return false,
+        };
         let proc_stat = proc_stat
             .chars()
             .skip_while(|&x| x != ')')
