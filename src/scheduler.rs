@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use crate::monitor::{Monitor, SysStatus};
 use crate::task::{Task, TaskStatus};
 use crate::utils::cli::Args;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
 pub struct Scheduler {
     // spaces for tasks
@@ -77,18 +78,33 @@ impl Scheduler {
     }
 
     fn run(&mut self) {
+        let style = ProgressStyle::with_template(
+            "[{elapsed_precise}]|{bar:40.cyan/blue}|{pos:>5}/{len:5}|{msg}",
+        )
+        .unwrap()
+        .progress_chars("=>-");
+        let msg_style = ProgressStyle::with_template("{spinner} {msg}").unwrap();
+
+        let multi_pbar = MultiProgress::new();
+
+        let pbar = multi_pbar.add(ProgressBar::new(self.waiting_queue.len() as u64));
+        pbar.set_style(style);
+
+        let pmsg_bar = multi_pbar.add(ProgressBar::new_spinner());
+        pmsg_bar.set_style(msg_style);
+        pmsg_bar.enable_steady_tick(Duration::from_millis(100));
+
         loop {
             let tick_start = Instant::now();
             let tasks =
                 self.waiting_queue.len() + self.running_pool.len() + self.timeout_pool.len();
 
-            println!(
-                "Working..., {} task(s) remained, runing: {}, timeout: {}, waiting: {}",
-                tasks,
+            pmsg_bar.set_message(format!(
+                "[running: {}|timeout_wait: {}|exited: {}]",
                 self.running_pool.len(),
                 self.timeout_pool.len(),
-                self.waiting_queue.len()
-            );
+                self.exited_pool.len()
+            ));
 
             if tasks == 0 || self.stop_flag {
                 // all task is done.
@@ -104,6 +120,7 @@ impl Scheduler {
                     Ok(Some(_)) => {
                         task.set_status(TaskStatus::Exited);
                         self.exited_pool.push(task);
+                        pbar.inc(1);
                     }
                     Ok(None) => {
                         // task is still running
@@ -118,6 +135,7 @@ impl Scheduler {
                     }
                     Err(_) => {
                         // something going wrong, drop this task
+                        pbar.inc(1);
                         continue;
                     }
                 }
@@ -136,12 +154,18 @@ impl Scheduler {
                         self.run_dir,
                         task.get_name()
                     )));
-                    task.spawn();
-                    self.running_pool.push(task);
+                    let ret = task.spawn();
+                    if ret {
+                        self.running_pool.push(task);
+                    } else {
+                        pbar.set_message("[Warn: Unable to spawn new child!]");
+                        self.waiting_queue.push_back(task);
+                    }
                 }
             } else {
                 match self.monitor.is_ok(running_tasks) {
                     SysStatus::Health => {
+                        pbar.set_message("[System: Health]");
                         // if system load is health, try to add a task to run,
                         if !self.waiting_queue.is_empty() && workers < self.max_workers {
                             let mut task = self.waiting_queue.pop_front().unwrap();
@@ -155,15 +179,18 @@ impl Scheduler {
                                 self.running_pool.push(task);
                             } else {
                                 // failed to spawn a new process, back to wait
+                                pbar.set_message("[Warn: Unable to spawn new child!]");
                                 self.waiting_queue.push_back(task);
                             }
                         }
                     }
                     SysStatus::Normal => {
                         // do nothing,
+                        pbar.set_message("[System: Normal]");
                     }
                     SysStatus::Bad => {
                         // try to stop a task
+                        pbar.set_message("[System: Bad]");
                         if workers > self.force_workers && !self.running_pool.is_empty() {
                             let mut task = self.running_pool.pop().unwrap();
                             task.stop().expect("Failed to kill task");
@@ -173,6 +200,30 @@ impl Scheduler {
                 }
             }
 
+            // cleanup force stop pool
+            for mut task in self.force_stop_pool.drain(..) {
+                match task.try_wait() {
+                    Ok(Some(_)) => {
+                        // task finally stop itself
+                        self.exited_pool.push(task);
+                        pbar.inc(1);
+                    }
+                    Ok(None) => {
+                        // we should stop the task forcely
+                        let _ = task.stop();
+                        self.exited_pool.push(task);
+                        pbar.inc(1);
+                    }
+                    Err(_) => {
+                        // something going wrong, drop this task
+                        pbar.inc(1);
+                        continue;
+                    }
+                }
+            }
+            // reinit this pool
+            self.force_stop_pool = Vec::new();
+
             // Finally, check the timeout pool to waiting process exit itself or kill it.
             let mut remain_timeout_tasks = Vec::new();
             for mut task in self.timeout_pool.drain(..) {
@@ -180,6 +231,7 @@ impl Scheduler {
                     Ok(Some(_)) => {
                         // task stop itself
                         self.exited_pool.push(task);
+                        pbar.inc(1);
                     }
                     Ok(None) => {
                         let elapsed = task.waiting_time().as_secs_f64();
@@ -196,6 +248,7 @@ impl Scheduler {
                     }
                     Err(_) => {
                         // something going wrong, drop this task
+                        pbar.inc(1);
                         continue;
                     }
                 }
@@ -203,32 +256,12 @@ impl Scheduler {
 
             self.timeout_pool = remain_timeout_tasks;
 
-            // cleanup force stop pool
-            for mut task in self.force_stop_pool.drain(..) {
-                match task.try_wait() {
-                    Ok(Some(_)) => {
-                        // task finally stop itself
-                        self.exited_pool.push(task);
-                    }
-                    Ok(None) => {
-                        // we should stop the task forcely
-                        let _ = task.stop();
-                        self.exited_pool.push(task);
-                    }
-                    Err(_) => {
-                        // something going wrong, drop this task
-                        continue;
-                    }
-                }
-            }
-            // reinit this pool
-            self.force_stop_pool = Vec::new();
-
             let tick_runing_time = tick_start.elapsed().as_millis();
             let tick_sleep_time = (self.tick_time - tick_runing_time) as u64;
 
             sleep(Duration::from_millis(tick_sleep_time));
         }
+        pbar.finish();
     }
 
     pub fn write_report(&self) {

@@ -1,11 +1,12 @@
 [package]
 name = "cirno"
-version = "1.0.2"
+version = "1.0.3"
 description = 'a "smartest" task scheduler'
 edition = "2021"
 
 [dependencies]
 clap = { version = "4.5.2", features = ["derive"] }
+indicatif = "0.17.8"
 rustix = { version = "0.38.31", features = ["process", "param"] }
 sysinfo = "0.30.7"
 uuid = { version = "1.7.0", features = ["v1", "std", "fast-rng"] }
