@@ -285,9 +285,9 @@ impl Scheduler {
 
             info!("Time to Sleep");
             let tick_runing_time = tick_start.elapsed().as_millis();
-            let tick_sleep_time = (self.tick_time - tick_runing_time) as u64;
+            let tick_sleep_time = self.tick_time.saturating_sub(tick_runing_time);
 
-            sleep(Duration::from_millis(tick_sleep_time));
+            sleep(Duration::from_millis(tick_sleep_time as u64));
         }
         pbar.finish();
     }
