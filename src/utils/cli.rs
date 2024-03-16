@@ -21,7 +21,7 @@ pub struct Args {
     pub tick_rate: f64,
     #[arg(long, default_value_t = 0.9, help = "use ratio of total mem")]
     pub high_mem_thres: f64,
-    #[arg(long, default_value_t = 0.6, help = "use ratio of total mem")]
+    #[arg(long, default_value_t = 0.7, help = "use ratio of total mem")]
     pub low_mem_thres: f64,
     #[arg(short, long, default_value_t = 4294967296, help = "Byte as unit")]
     pub per_task_mem: usize,

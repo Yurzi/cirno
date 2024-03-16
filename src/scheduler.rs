@@ -82,14 +82,15 @@ impl Scheduler {
             let tasks =
                 self.waiting_queue.len() + self.running_pool.len() + self.timeout_pool.len();
 
-            print!(
-                "\rWorking..., {} task(s) remained, runing: {}",
+            println!(
+                "Working..., {} task(s) remained, runing: {}, timeout: {}, waiting: {}",
                 tasks,
-                self.running_pool.len()
+                self.running_pool.len(),
+                self.timeout_pool.len(),
+                self.waiting_queue.len()
             );
-            let _ = std::io::stdout().flush();
 
-            if tasks == 0 {
+            if tasks == 0 || self.stop_flag {
                 // all task is done.
                 break;
             }
@@ -149,8 +150,13 @@ impl Scheduler {
                                 self.run_dir,
                                 task.get_name()
                             )));
-                            task.spawn();
-                            self.running_pool.push(task);
+                            let ret = task.spawn();
+                            if ret {
+                                self.running_pool.push(task);
+                            } else {
+                                // failed to spawn a new process, back to wait
+                                self.waiting_queue.push_back(task);
+                            }
                         }
                     }
                     SysStatus::Normal => {
@@ -158,7 +164,7 @@ impl Scheduler {
                     }
                     SysStatus::Bad => {
                         // try to stop a task
-                        if workers > self.force_workers {
+                        if workers > self.force_workers && !self.running_pool.is_empty() {
                             let mut task = self.running_pool.pop().unwrap();
                             task.stop().expect("Failed to kill task");
                             self.waiting_queue.push_back(task);

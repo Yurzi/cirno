@@ -128,7 +128,7 @@ impl Task {
         self
     }
 
-    pub fn spawn(&mut self) {
+    pub fn spawn(&mut self) -> bool {
         if self.handler.is_some() {
             self.stop()
                 .expect("Failed to respawn, due to unknown reason.");
@@ -141,15 +141,22 @@ impl Task {
                 None
             }
         };
+        if p.is_none() {
+            return false;
+        }
         self.start_time = Some(Instant::now());
         self.handler = p;
+        true
     }
 
     pub fn try_wait(&mut self) -> Result<Option<ExitStatus>> {
         if let Some(chlid) = &mut self.handler {
             chlid.try_wait()
         } else {
-            Ok(None)
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "child process not found",
+            ))
         }
     }
 
