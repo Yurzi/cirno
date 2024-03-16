@@ -60,7 +60,6 @@ impl Monitor {
         // check system load average
         let load_avg = System::load_average().five / self.system.cpus().len() as f64;
         if load_avg > self.load_avg_thres * 2.0 {
-            println!("System Bad: Cpu Overload");
             return SysStatus::Bad;
         }
 
@@ -89,10 +88,8 @@ impl Monitor {
         if predicate_mem_used <= self.low_mem_thres {
             SysStatus::Health
         } else if predicate_mem_used > self.high_mem_thres {
-            println!("System Bad: Mem Overload");
             SysStatus::Bad
         } else {
-            println!("System Normal");
             SysStatus::Normal
         }
     }
