@@ -8,6 +8,7 @@ use std::{
 };
 
 use crate::utils::process::kill_process_tree;
+use log::warn;
 use rustix::process::{Pid, Signal};
 use uuid::Uuid;
 
@@ -137,7 +138,7 @@ impl Task {
         let p = match self.cmd.spawn() {
             Ok(p) => Some(p),
             Err(e) => {
-                println!("Failed to spawn process: {}", e);
+                warn!("Failed to spawn process: {}", e);
                 None
             }
         };

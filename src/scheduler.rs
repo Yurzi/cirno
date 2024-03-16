@@ -8,6 +8,8 @@ use crate::monitor::{Monitor, SysStatus};
 use crate::task::{Task, TaskStatus};
 use crate::utils::cli::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif_log_bridge::LogWrapper;
+use log::{info, warn};
 
 pub struct Scheduler {
     // spaces for tasks
@@ -86,6 +88,13 @@ impl Scheduler {
         let msg_style = ProgressStyle::with_template("{spinner} {msg}").unwrap();
 
         let multi_pbar = MultiProgress::new();
+        let logger =
+            env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+                .build();
+
+        LogWrapper::new(multi_pbar.clone(), logger)
+            .try_init()
+            .unwrap();
 
         let pbar = multi_pbar.add(ProgressBar::new(self.waiting_queue.len() as u64));
         pbar.set_style(style);
@@ -96,6 +105,8 @@ impl Scheduler {
 
         loop {
             let tick_start = Instant::now();
+            pbar.tick();
+            info!("New loop start");
             let tasks =
                 self.waiting_queue.len() + self.running_pool.len() + self.timeout_pool.len();
 
@@ -106,13 +117,16 @@ impl Scheduler {
                 self.exited_pool.len()
             ));
 
+            info!("Checking if should stop");
             if tasks == 0 || self.stop_flag {
                 // all task is done.
+                info!("Cirno Loop Exited");
                 break;
             }
 
             // do schedule
             // Firstly, check running pool for finished and timeout task
+            info!("Checking running pool...");
             let mut remain_running_tasks = Vec::new();
             for mut task in self.running_pool.drain(..) {
                 // check if the task is done
@@ -121,6 +135,7 @@ impl Scheduler {
                         task.set_status(TaskStatus::Exited);
                         self.exited_pool.push(task);
                         pbar.inc(1);
+                        info!("Found Exited");
                     }
                     Ok(None) => {
                         // task is still running
@@ -129,19 +144,22 @@ impl Scheduler {
                             task.set_status(TaskStatus::Timeout);
                             task.reset_waiting_time();
                             self.timeout_pool.push(task);
+                            info!("Found Timeout");
                         } else {
                             remain_running_tasks.push(task);
                         }
                     }
-                    Err(_) => {
+                    Err(e) => {
                         // something going wrong, drop this task
                         pbar.inc(1);
+                        warn!("Found Error Task Wait: {}", e);
                         continue;
                     }
                 }
             }
             self.running_pool = remain_running_tasks;
             // Secondly, Check System Status
+            info!("Checking System Status...");
             let running_tasks = self.running_pool.len() + self.timeout_pool.len();
             let workers = self.running_pool.len() + self.timeout_pool.len();
             if workers < self.force_workers {
@@ -155,10 +173,11 @@ impl Scheduler {
                         task.get_name()
                     )));
                     let ret = task.spawn();
+                    info!("Start a new Task");
                     if ret {
                         self.running_pool.push(task);
                     } else {
-                        pbar.set_message("[Warn: Unable to spawn new child!]");
+                        warn!("Unable to spawn new child!");
                         self.waiting_queue.push_back(task);
                     }
                 }
@@ -175,11 +194,12 @@ impl Scheduler {
                                 task.get_name()
                             )));
                             let ret = task.spawn();
+                            info!("Start a new Task");
                             if ret {
                                 self.running_pool.push(task);
                             } else {
                                 // failed to spawn a new process, back to wait
-                                pbar.set_message("[Warn: Unable to spawn new child!]");
+                                warn!("Unable to spawn new child!");
                                 self.waiting_queue.push_back(task);
                             }
                         }
@@ -201,22 +221,26 @@ impl Scheduler {
             }
 
             // cleanup force stop pool
+            info!("Checking Force Stop Pool...");
             for mut task in self.force_stop_pool.drain(..) {
                 match task.try_wait() {
                     Ok(Some(_)) => {
                         // task finally stop itself
                         self.exited_pool.push(task);
+                        info!("Task Stop Itself");
                         pbar.inc(1);
                     }
                     Ok(None) => {
                         // we should stop the task forcely
                         let _ = task.stop();
                         self.exited_pool.push(task);
+                        info!("Task Stop Forcely");
                         pbar.inc(1);
                     }
-                    Err(_) => {
+                    Err(e) => {
                         // something going wrong, drop this task
                         pbar.inc(1);
+                        warn!("Found Error: {}", e);
                         continue;
                     }
                 }
@@ -225,11 +249,13 @@ impl Scheduler {
             self.force_stop_pool = Vec::new();
 
             // Finally, check the timeout pool to waiting process exit itself or kill it.
+            info!("Checking Timeout Pool...");
             let mut remain_timeout_tasks = Vec::new();
             for mut task in self.timeout_pool.drain(..) {
                 match task.try_wait() {
                     Ok(Some(_)) => {
                         // task stop itself
+                        info!("Task Stop Itself");
                         self.exited_pool.push(task);
                         pbar.inc(1);
                     }
@@ -246,9 +272,10 @@ impl Scheduler {
                             remain_timeout_tasks.push(task);
                         }
                     }
-                    Err(_) => {
+                    Err(e) => {
                         // something going wrong, drop this task
                         pbar.inc(1);
+                        warn!("Found Error: {}", e);
                         continue;
                     }
                 }
@@ -256,6 +283,7 @@ impl Scheduler {
 
             self.timeout_pool = remain_timeout_tasks;
 
+            info!("Time to Sleep");
             let tick_runing_time = tick_start.elapsed().as_millis();
             let tick_sleep_time = (self.tick_time - tick_runing_time) as u64;
 
