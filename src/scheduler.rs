@@ -9,7 +9,7 @@ use crate::task::{Task, TaskStatus};
 use crate::utils::cli::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use indicatif_log_bridge::LogWrapper;
-use log::{info, warn};
+use log::{debug, warn};
 
 pub struct Scheduler {
     // spaces for tasks
@@ -106,7 +106,7 @@ impl Scheduler {
         loop {
             let tick_start = Instant::now();
             pbar.tick();
-            info!("New loop start");
+            debug!("New loop start");
             let tasks =
                 self.waiting_queue.len() + self.running_pool.len() + self.timeout_pool.len();
 
@@ -117,16 +117,16 @@ impl Scheduler {
                 self.exited_pool.len()
             ));
 
-            info!("Checking if should stop");
+            debug!("Checking if should stop");
             if tasks == 0 || self.stop_flag {
                 // all task is done.
-                info!("Cirno Loop Exited");
+                debug!("Cirno Loop Exited");
                 break;
             }
 
             // do schedule
             // Firstly, check running pool for finished and timeout task
-            info!("Checking running pool...");
+            debug!("Checking running pool...");
             let mut remain_running_tasks = Vec::new();
             for mut task in self.running_pool.drain(..) {
                 // check if the task is done
@@ -135,7 +135,7 @@ impl Scheduler {
                         task.set_status(TaskStatus::Exited);
                         self.exited_pool.push(task);
                         pbar.inc(1);
-                        info!("Found Exited");
+                        debug!("Found Exited");
                     }
                     Ok(None) => {
                         // task is still running
@@ -144,7 +144,7 @@ impl Scheduler {
                             task.set_status(TaskStatus::Timeout);
                             task.reset_waiting_time();
                             self.timeout_pool.push(task);
-                            info!("Found Timeout");
+                            debug!("Found Timeout");
                         } else {
                             remain_running_tasks.push(task);
                         }
@@ -159,7 +159,7 @@ impl Scheduler {
             }
             self.running_pool = remain_running_tasks;
             // Secondly, Check System Status
-            info!("Checking System Status...");
+            debug!("Checking System Status...");
             let running_tasks = self.running_pool.len() + self.timeout_pool.len();
             let workers = self.running_pool.len() + self.timeout_pool.len();
             if workers < self.force_workers {
@@ -173,7 +173,7 @@ impl Scheduler {
                         task.get_name()
                     )));
                     let ret = task.spawn();
-                    info!("Start a new Task");
+                    debug!("Start a new Task");
                     if ret {
                         self.running_pool.push(task);
                     } else {
@@ -194,7 +194,7 @@ impl Scheduler {
                                 task.get_name()
                             )));
                             let ret = task.spawn();
-                            info!("Start a new Task");
+                            debug!("Start a new Task");
                             if ret {
                                 self.running_pool.push(task);
                             } else {
@@ -221,20 +221,20 @@ impl Scheduler {
             }
 
             // cleanup force stop pool
-            info!("Checking Force Stop Pool...");
+            debug!("Checking Force Stop Pool...");
             for mut task in self.force_stop_pool.drain(..) {
                 match task.try_wait() {
                     Ok(Some(_)) => {
                         // task finally stop itself
                         self.exited_pool.push(task);
-                        info!("Task Stop Itself");
+                        debug!("Task Stop Itself");
                         pbar.inc(1);
                     }
                     Ok(None) => {
                         // we should stop the task forcely
                         let _ = task.stop();
                         self.exited_pool.push(task);
-                        info!("Task Stop Forcely");
+                        debug!("Task Stop Forcely");
                         pbar.inc(1);
                     }
                     Err(e) => {
@@ -249,13 +249,13 @@ impl Scheduler {
             self.force_stop_pool = Vec::new();
 
             // Finally, check the timeout pool to waiting process exit itself or kill it.
-            info!("Checking Timeout Pool...");
+            debug!("Checking Timeout Pool...");
             let mut remain_timeout_tasks = Vec::new();
             for mut task in self.timeout_pool.drain(..) {
                 match task.try_wait() {
                     Ok(Some(_)) => {
                         // task stop itself
-                        info!("Task Stop Itself");
+                        debug!("Task Stop Itself");
                         self.exited_pool.push(task);
                         pbar.inc(1);
                     }
@@ -264,6 +264,7 @@ impl Scheduler {
                         if elapsed >= self.timeout_wait {
                             // send kill to task all childern to help exit
                             let _ = task.signal(rustix::process::Signal::Kill, false);
+                            let _ = task.signal(rustix::process::Signal::Alarm, true);
                             // move to force stop pool
                             self.force_stop_pool.push(task);
                         } else {
@@ -283,7 +284,7 @@ impl Scheduler {
 
             self.timeout_pool = remain_timeout_tasks;
 
-            info!("Time to Sleep");
+            debug!("Time to Sleep");
             let tick_runing_time = tick_start.elapsed().as_millis();
             let tick_sleep_time = self.tick_time.saturating_sub(tick_runing_time);
 
