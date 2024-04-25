@@ -98,6 +98,7 @@ impl Scheduler {
 
         let pbar = multi_pbar.add(ProgressBar::new(self.waiting_queue.len() as u64));
         pbar.set_style(style);
+        pbar.enable_steady_tick(Duration::from_millis(100));
 
         let pmsg_bar = multi_pbar.add(ProgressBar::new_spinner());
         pmsg_bar.set_style(msg_style);
@@ -105,7 +106,6 @@ impl Scheduler {
 
         loop {
             let tick_start = Instant::now();
-            pbar.tick();
             debug!("New loop start");
             let tasks =
                 self.waiting_queue.len() + self.running_pool.len() + self.timeout_pool.len();
@@ -287,7 +287,6 @@ impl Scheduler {
             debug!("Time to Sleep");
             let tick_runing_time = tick_start.elapsed().as_millis();
             let tick_sleep_time = self.tick_time.saturating_sub(tick_runing_time);
-            pbar.tick();
 
             sleep(Duration::from_millis(tick_sleep_time as u64));
         }
