@@ -288,6 +288,12 @@ impl Scheduler {
             let tick_runing_time = tick_start.elapsed().as_millis();
             let tick_sleep_time = self.tick_time.saturating_sub(tick_runing_time);
 
+            pmsg_bar.set_message(format!(
+                "[running: {}|timeout_wait: {}|exited: {}]",
+                self.running_pool.len(),
+                self.timeout_pool.len(),
+                self.exited_pool.len()
+            ));
             sleep(Duration::from_millis(tick_sleep_time as u64));
         }
         pbar.finish();
