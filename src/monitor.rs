@@ -1,9 +1,11 @@
 use crate::utils::cli::Args;
+use crate::utils::gpu::{GpuInfo, GpuVendor};
 use crate::utils::process::get_process_tree;
 use rustix::process::getpid;
 
 use sysinfo::System;
 
+#[derive(PartialEq, Eq, Debug)]
 pub enum SysStatus {
     Health,
     Normal,
@@ -20,6 +22,9 @@ pub struct Monitor {
     reversed_mem: usize,
 
     load_avg_thres: f64,
+
+    with_gpu: bool,
+    gpu_mem_thres: f64,
 }
 
 impl Monitor {
@@ -43,6 +48,8 @@ impl Monitor {
             high_mem_thres
         };
 
+        let with_gpu = args.with_gpu;
+        let gpu_mem_thres = args.gpu_mem_thres.clamp(0.0, 1.0);
         Monitor {
             system,
             high_mem_thres,
@@ -50,6 +57,8 @@ impl Monitor {
             per_task_mem,
             reversed_mem,
             load_avg_thres: args.load_avg_thres,
+            with_gpu,
+            gpu_mem_thres,
         }
     }
 
@@ -85,12 +94,30 @@ impl Monitor {
         let os_total_mem_used = self.system.used_memory() as usize;
         // if mem has free
         let predicate_mem_used = os_total_mem_used + per_task_mem;
-        if predicate_mem_used <= self.low_mem_thres {
+        let mut sys_status_res = if predicate_mem_used <= self.low_mem_thres {
             SysStatus::Health
         } else if predicate_mem_used > self.high_mem_thres {
             SysStatus::Bad
         } else {
             SysStatus::Normal
+        };
+
+        // check gpu usage
+        if self.with_gpu && sys_status_res == SysStatus::Health {
+            let gpu_cards = GpuInfo::get_gpus_info(GpuVendor::Nvidia);
+            let mut has_free_card = false;
+            for card in gpu_cards {
+                if card.memory_free / card.memory_total >= self.gpu_mem_thres {
+                    has_free_card = true;
+                    break;
+                }
+            }
+
+            if !has_free_card {
+                sys_status_res = SysStatus::Normal;
+            }
         }
+
+        sys_status_res
     }
 }
