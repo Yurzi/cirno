@@ -235,6 +235,16 @@ pub fn gen_tasks_from_file(filename: &Path, with_task_name: bool) -> Vec<Task> {
     }
     let mut task_list = Vec::new();
     for line in contents.split('\n') {
+        let line = line.trim();
+        // skip empty line
+        if line.is_empty() {
+            continue;
+        }
+        // skip comment line, which startwith `#`
+        if line.starts_with("#") {
+            continue;
+        }
+
         let mut parts = line.split(',');
         let first = parts.next().expect("Bad format for input task list");
 
