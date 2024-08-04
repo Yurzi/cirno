@@ -124,6 +124,9 @@ impl Scheduler {
                 break;
             }
 
+            // write report to file if necessary
+            self.write_report();
+
             // do schedule
             // Firstly, check running pool for finished and timeout task
             debug!("Checking running pool...");
