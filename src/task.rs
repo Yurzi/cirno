@@ -1,9 +1,10 @@
 use std::{
     fmt::Display,
-    fs::{self},
+    fs,
     io::Result,
     path::Path,
     process::{Child, Command, ExitStatus, Stdio},
+    str::FromStr,
     time::{Duration, Instant},
 };
 
@@ -50,7 +51,7 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn new(cmd: &str) -> Self {
+    pub fn new(cmd: &str, name_or_none: Option<&str>) -> Self {
         let mut tokens = cmd.split_whitespace();
         // if paninc here, it means the input is invalid
         let prog = tokens.next().unwrap().to_string();
@@ -62,8 +63,14 @@ impl Task {
         let mut cmd = Command::new(&prog);
         cmd.args(args.clone());
 
+        let name = if let Some(task_name) = name_or_none {
+            String::from_str(task_name).unwrap_or(String::from(Uuid::now_v1(&NODE_ID)))
+        } else {
+            String::from(Uuid::now_v1(&NODE_ID))
+        };
+
         Task {
-            name: String::from(Uuid::now_v1(&NODE_ID)),
+            name,
             prog,
             args,
             cmd,
@@ -206,7 +213,7 @@ impl Drop for Task {
     }
 }
 
-pub fn gen_tasks_from_file(filename: &Path) -> Vec<Task> {
+pub fn gen_tasks_from_file(filename: &Path, with_task_name: bool) -> Vec<Task> {
     let contents = fs::read_to_string(filename).expect("Failed to read task list");
     let contents = contents.trim();
     if contents.is_empty() {
@@ -214,7 +221,19 @@ pub fn gen_tasks_from_file(filename: &Path) -> Vec<Task> {
     }
     let mut task_list = Vec::new();
     for line in contents.split('\n') {
-        let task = Task::new(line);
+        let mut parts = line.split(',');
+        let first = parts.next().expect("Bad format for input task list");
+
+        let task = if with_task_name {
+            let second = parts
+                .next()
+                .expect("Bad format for input task list, maybe task_name missing");
+
+            Task::new(second, Some(first))
+        } else {
+            Task::new(first, None)
+        };
+
         task_list.push(task);
     }
 

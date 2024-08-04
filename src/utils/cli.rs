@@ -48,6 +48,13 @@ pub struct Args {
 
     #[arg(
         long,
+        action,
+        help = "if input task list has task name as first element"
+    )]
+    pub with_task_name: bool,
+
+    #[arg(
+        long,
         default_value_t = 0.72,
         help = "thershold for free mem in a card to be consdier as free card"
     )]
