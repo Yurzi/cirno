@@ -19,7 +19,7 @@ When Cirno detects that a task has timed out,
 it will use the signal `SIGALRM` to notify the process and wait for process to exit on its own.
 
 When Cirno must terminate a process,
-it will help the process escape from child process hell (sending the signal `SIGKILL` to its child processes),
+it will help the process escape from child process hell (sending the signal `SIGINT` to its child processes),
 and check the child process status in the next scheduling loop.
 If these do not work, then `SIGKILL` will be sent to all.
 

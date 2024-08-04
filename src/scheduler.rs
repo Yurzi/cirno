@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io::Write;
 use std::path::Path;
@@ -279,7 +278,7 @@ impl Scheduler {
                         let elapsed = task.waiting_time().as_secs_f64();
                         if elapsed >= self.timeout_wait {
                             // send kill to task all childern to help exit
-                            let _ = task.signal(rustix::process::Signal::Kill, false);
+                            let _ = task.signal(rustix::process::Signal::Int, false);
                             let _ = task.signal(rustix::process::Signal::Alarm, true);
                             // move to force stop pool
                             self.force_stop_pool.push(task);
