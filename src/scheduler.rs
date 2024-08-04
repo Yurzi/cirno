@@ -1,6 +1,9 @@
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -30,7 +33,7 @@ pub struct Scheduler {
     force_workers: usize,
 
     monitor: Monitor,
-    stop_flag: bool,
+    stop_flag: Arc<AtomicBool>,
 
     run_dir: String,
 }
@@ -55,7 +58,7 @@ impl Scheduler {
             force_workers: args.force_workers,
 
             monitor,
-            stop_flag: false,
+            stop_flag: Arc::new(AtomicBool::new(false)),
 
             run_dir: args.run_dir.clone(),
         };
@@ -67,16 +70,16 @@ impl Scheduler {
         std::fs::create_dir_all(&self.run_dir).expect("Failed to create runtime directory");
     }
 
+    pub fn get_stop_flag_ref(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.stop_flag)
+    }
+
     pub fn submit(&mut self, task: Task) {
         self.waiting_queue.push_back(task);
     }
 
     pub fn start(&mut self) {
         self.run();
-    }
-
-    pub fn stop(&mut self) {
-        self.stop_flag = true;
     }
 
     fn run(&mut self) {
@@ -118,7 +121,7 @@ impl Scheduler {
             ));
 
             debug!("Checking if should stop");
-            if tasks == 0 || self.stop_flag {
+            if tasks == 0 || self.stop_flag.load(Ordering::Relaxed) {
                 // all task is done.
                 debug!("Cirno Loop Exited");
                 break;

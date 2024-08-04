@@ -12,8 +12,10 @@ fn main() {
     for task in gen_tasks_from_file(Path::new(input_list), with_task_name) {
         scheduler.submit(task);
     }
+    let _ = signal_hook::flag::register(signal_hook::consts::SIGINT, scheduler.get_stop_flag_ref());
+    let _ =
+        signal_hook::flag::register(signal_hook::consts::SIGTERM, scheduler.get_stop_flag_ref());
 
     scheduler.start();
-    scheduler.stop();
     scheduler.write_report();
 }
