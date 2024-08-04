@@ -11,7 +11,7 @@ indicatif = "0.17.8"
 indicatif-log-bridge = "0.2.2"
 log = "0.4.21"
 rustix = { version = "0.38.31", features = ["process", "param"] }
-sysinfo = "0.30.7"
+sysinfo = "0.31.2"
 uuid = { version = "1.7.0", features = ["v1", "std", "fast-rng"] }
 
 [profile.release]
