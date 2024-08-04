@@ -127,12 +127,26 @@ impl Task {
         self
     }
 
+    fn stderr(&mut self, pipe: Stdio) -> &mut Self {
+        self.cmd.stderr(pipe);
+        self
+    }
+
     pub fn stdout_from_file(&mut self, path: &Path) -> &mut Self {
         if let Some(p) = path.parent() {
             fs::create_dir_all(p).expect("Failed to create runtime dir");
         }
         let file = fs::File::create(path).expect("Failed to create file");
         self.stdout(Stdio::from(file));
+        self
+    }
+
+    pub fn stderr_from_file(&mut self, path: &Path) -> &mut Self {
+        if let Some(p) = path.parent() {
+            fs::create_dir_all(p).expect("Failed to create runtime dir");
+        }
+        let file = fs::File::create(path).expect("Failed to create file");
+        self.stderr(Stdio::from(file));
         self
     }
 

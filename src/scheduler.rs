@@ -175,6 +175,11 @@ impl Scheduler {
                         self.run_dir,
                         task.get_name()
                     )));
+                    task.stderr_from_file(Path::new(&format!(
+                        "{}/{}.err",
+                        self.run_dir,
+                        task.get_name()
+                    )));
                     let ret = task.spawn();
                     debug!("Start a new Task");
                     if ret {
@@ -193,6 +198,11 @@ impl Scheduler {
                             let mut task = self.waiting_queue.pop_front().unwrap();
                             task.stdout_from_file(Path::new(&format!(
                                 "{}/{}.log",
+                                self.run_dir,
+                                task.get_name()
+                            )));
+                            task.stderr_from_file(Path::new(&format!(
+                                "{}/{}.err",
                                 self.run_dir,
                                 task.get_name()
                             )));
