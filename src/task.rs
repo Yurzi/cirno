@@ -191,7 +191,7 @@ impl Task {
                     Some(status) => Ok(Some(status)),
                     None => {
                         // use kill signl to stop process forcely.
-                        match kill_process_tree(Pid::from_child(&child), Signal::Kill, true) {
+                        match kill_process_tree(Pid::from_child(&child), Signal::KILL, true) {
                             Ok(_) => Ok(Some(child.wait()?)),
                             Err(_) => unreachable!(),
                         }

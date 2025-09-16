@@ -22,9 +22,7 @@ pub struct Scheduler {
     exited_pool: Vec<Task>,
 
     // propreties of scheduler
-    // how many ticks per second
-    tick_rate: f64,
-    tick_time: u128,   // miliseconds
+    tick_time: u128,   // miliseconds of a loop
     timeout: f64,      // seconds
     timeout_wait: f64, // seconds
 
@@ -48,7 +46,6 @@ impl Scheduler {
             force_stop_pool: Vec::new(),
             exited_pool: Vec::new(),
 
-            tick_rate: args.tick_rate,
             tick_time,
             timeout: args.timeout,
             timeout_wait: args.timeout_wait,
@@ -278,13 +275,13 @@ impl Scheduler {
                         let elapsed = task.waiting_time().as_secs_f64();
                         if elapsed >= self.timeout_wait {
                             // send kill to task all childern to help exit
-                            let _ = task.signal(rustix::process::Signal::Int, false);
-                            let _ = task.signal(rustix::process::Signal::Alarm, true);
+                            let _ = task.signal(rustix::process::Signal::INT, false);
+                            let _ = task.signal(rustix::process::Signal::ALARM, true);
                             // move to force stop pool
                             self.force_stop_pool.push(task);
                         } else {
                             // signal alarm to process
-                            let _ = task.signal(rustix::process::Signal::Alarm, true);
+                            let _ = task.signal(rustix::process::Signal::ALARM, true);
                             remain_timeout_tasks.push(task);
                         }
                     }

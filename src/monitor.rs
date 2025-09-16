@@ -19,7 +19,6 @@ pub struct Monitor {
     low_mem_thres: usize,
 
     per_task_mem: usize,
-    reversed_mem: usize,
 
     load_avg_thres: f64,
 
@@ -55,7 +54,6 @@ impl Monitor {
             high_mem_thres,
             low_mem_thres,
             per_task_mem,
-            reversed_mem,
             load_avg_thres: args.load_avg_thres,
             with_gpu,
             gpu_mem_thres,
