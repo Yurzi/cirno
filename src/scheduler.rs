@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -33,12 +33,17 @@ pub struct Scheduler {
     stop_flag: Arc<AtomicBool>,
 
     run_dir: String,
+    socket_file: String,
 }
 
 impl Scheduler {
     pub fn new(args: &Args) -> Self {
         let tick_time = (1000.0 / args.tick_rate) as u128;
         let monitor = Monitor::new(args);
+        let pid = std::process::id();
+
+        let socket_file = format!("{}/cirno_{}.sock", args.run_dir, pid);
+
         let res = Scheduler {
             waiting_queue: VecDeque::new(),
             running_pool: Vec::new(),
@@ -57,6 +62,7 @@ impl Scheduler {
             stop_flag: Arc::new(AtomicBool::new(false)),
 
             run_dir: args.run_dir.clone(),
+            socket_file,
         };
         res.init_runtime();
         res
@@ -64,6 +70,58 @@ impl Scheduler {
 
     fn init_runtime(&self) {
         std::fs::create_dir_all(&self.run_dir).expect("Failed to create runtime directory");
+    }
+
+    fn init_socket(&self) {
+        if Path::new(&self.socket_file).exists() {
+            std::fs::remove_file(&self.socket_file).expect("Failed to remove existing socket file");
+        }
+
+        // create normal file
+        std::fs::File::create(&self.socket_file).expect("Failed to create socket file");
+    }
+
+    fn cleanup_socket(&self) {
+        if Path::new(&self.socket_file).exists() {
+            std::fs::remove_file(&self.socket_file).expect("Failed to remove existing socket file");
+        }
+    }
+
+    fn read_socke_update_param(&mut self) {
+        // open socket file
+        let fd = std::fs::File::open(&self.socket_file);
+        if let Ok(input) = fd {
+            let bufferd = BufReader::new(input);
+            for line in bufferd.lines() {
+                // split by =
+                let line = if let Ok(l) = line {
+                    if l.trim().is_empty() || l.starts_with('#') || !l.contains('=') {
+                        continue;
+                    }
+                    l
+                } else {
+                    continue;
+                };
+
+                let (key, value) = line.split_once('=').unwrap();
+                match key {
+                    "workers" => {
+                        if let Ok(v) = value.parse::<usize>() {
+                            self.max_workers = v;
+                        }
+                    }
+                    "force_workers" => {
+                        if let Ok(v) = value.parse::<usize>() {
+                            self.force_workers = v;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // remove all content in socket file
+        let _ = std::fs::File::create(&self.socket_file);
     }
 
     pub fn get_stop_flag_ref(&self) -> Arc<AtomicBool> {
@@ -75,7 +133,9 @@ impl Scheduler {
     }
 
     pub fn start(&mut self) {
+        self.init_socket();
         self.run();
+        self.cleanup_socket();
     }
 
     fn run(&mut self) {
@@ -295,6 +355,9 @@ impl Scheduler {
             }
 
             self.timeout_pool = remain_timeout_tasks;
+
+            // update param
+            self.read_socke_update_param();
 
             debug!("Time to Sleep");
             let tick_runing_time = tick_start.elapsed().as_millis();
