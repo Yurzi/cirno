@@ -60,6 +60,10 @@ impl Monitor {
         }
     }
 
+    pub fn set_per_task_mem(&mut self, per_task_mem: usize) {
+        self.per_task_mem = per_task_mem;
+    }
+
     pub fn is_ok(&mut self, running_task_amount: usize) -> SysStatus {
         // update monitor
         self.system.refresh_memory();

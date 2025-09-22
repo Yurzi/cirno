@@ -115,6 +115,11 @@ impl Scheduler {
                             self.force_workers = v;
                         }
                     }
+                    "per-task-mem" => {
+                        if let Ok(v) = value.parse::<usize>() {
+                            self.monitor.set_per_task_mem(v);
+                        }
+                    }
                     _ => {}
                 }
             }
